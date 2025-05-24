@@ -3,13 +3,14 @@
 import type React from "react"
 import { useState, useEffect, useMemo, useCallback, useRef, memo, startTransition } from "react"
 import styled from "styled-components"
-import type { VirtualizedGridProps } from "@/types/photo"
+import type { VirtualizedGridProps, GridItem } from "@/types/photo"
 import {
   calculateMasonryLayout,
   getResponsiveColumnCount,
   getVisibleItems,
   calculateTotalHeight,
 } from "@/lib/masonry-utils"
+import { virtualizationEngine } from "@/lib/ultra-virtualization-engine"
 import { PhotoCard } from "./photo-card"
 import { LoadingSpinner } from "./loading-spinner"
 
@@ -18,8 +19,10 @@ const GridContainer = styled.div`
   width: 100%;
   overflow-y: auto;
   height: 100vh;
-  overscroll-behavior: contain; /* Prevent scroll chaining */
-  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  padding-bottom: 400px; /* Increased padding for better infinite scroll */
 `
 
 const GridContent = styled.div.withConfig({
@@ -28,7 +31,8 @@ const GridContent = styled.div.withConfig({
   position: relative;
   height: ${(props) => props.height}px;
   width: 100%;
-  will-change: transform; /* Hint for browser optimization */
+  will-change: transform;
+  min-height: 100vh;
 `
 
 // Memoized PhotoCard component to prevent unnecessary re-renders
@@ -80,12 +84,15 @@ function debounce<T extends (...args: any[]) => any>(
   }
 }
 
-export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps> = ({
+const ultraEngine = virtualizationEngine
+
+export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps & { overscan?: number }> = ({
   photos,
   onPhotoClick,
   loading = false,
   onLoadMore,
   hasMore = false,
+  overscan = 5,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
@@ -101,7 +108,7 @@ export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps> = ({
 
   // Memoized column count based on container width
   const columnCount = useMemo(() => {
-    return getResponsiveColumnCount(containerWidth)
+    return Math.max(1, Math.floor(containerWidth / 320))
   }, [containerWidth])
 
   // Memoized masonry layout calculation with dependency optimization
@@ -110,16 +117,26 @@ export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps> = ({
     return calculateMasonryLayout(photos, containerWidth, columnCount)
   }, [photos, containerWidth, columnCount])
 
-  // Calculate total grid height
-  const totalHeight = useMemo(() => {
-    if (gridItems.length === 0) return 0
-    return calculateTotalHeight(gridItems) + 16
-  }, [gridItems])
-
   // Memoized visible items calculation with scroll velocity
   const visibleItems = useMemo(() => {
-    return getVisibleItems(gridItems, scrollTop, containerHeight, scrollVelocity)
+    // Increase the visible area by adding extra padding to containerHeight
+    const expandedHeight = containerHeight * 2 // Double the visible area
+    return getVisibleItems(
+      gridItems,
+      Math.max(0, scrollTop - containerHeight), // Start rendering earlier
+      expandedHeight,
+      scrollVelocity
+    )
   }, [gridItems, scrollTop, containerHeight, scrollVelocity])
+
+  // Calculate total grid height with additional padding
+  const totalHeight = useMemo(() => {
+    if (gridItems.length === 0) return window.innerHeight
+    return Math.max(
+      calculateTotalHeight(gridItems) + 16,
+      window.innerHeight + 400 // Ensure minimum height is viewport + padding
+    )
+  }, [gridItems])
 
   // Setup Intersection Observer for infinite loading
   useEffect(() => {
@@ -139,6 +156,34 @@ export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps> = ({
       }
     }
   }, [onLoadMore, hasMore, loading])
+
+  // Calculate layout and visible items using the web worker
+  useEffect(() => {
+    let cancelled = false
+    if (!containerWidth || photos.length === 0 || columnCount === 0) {
+      return
+    }
+
+    const expandedHeight = containerHeight * 2 // Double the visible area
+    const expandedOverscan = overscan * 2 // Double the overscan
+    const adjustedScrollTop = Math.max(0, scrollTop - containerHeight) // Start rendering earlier
+
+    ultraEngine.calculateLayout(photos, {
+      containerWidth,
+      containerHeight: expandedHeight,
+      columnCount,
+      gap: 16,
+      overscan: expandedOverscan,
+      scrollTop: adjustedScrollTop,
+      scrollVelocity,
+    }).then((items) => {
+      if (cancelled) return
+      // The layout is now handled by the memoized gridItems
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [photos, containerWidth, containerHeight, columnCount, overscan, scrollTop, scrollVelocity])
 
   // Optimized scroll handler with throttling
   const handleScroll = useCallback(
@@ -175,7 +220,7 @@ export const VirtualizedMasonryGrid: React.FC<VirtualizedGridProps> = ({
       scrollingTimeout.current = setTimeout(() => {
         isScrolling.current = false
         setScrollVelocity(0)
-      }, 100)
+      }, 150) // Increased timeout for smoother scrolling
     }, 16), // Throttle to ~60fps
     []
   )

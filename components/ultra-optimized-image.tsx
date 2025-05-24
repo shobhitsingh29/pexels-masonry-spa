@@ -133,20 +133,17 @@ export const UltraOptimizedImage: React.FC<UltraOptimizedImageProps> = memo(
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)
-    const loadTimeoutRef = useRef<NodeJS.Timeout>()
+    const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     const aspectRatio = width / height
 
     // Handle image load with quality progression
     const handleLoad = useCallback(() => {
       if (currentQuality === QUALITY_LEVELS.THUMBNAIL) {
-        // Load preview quality after thumbnail
         setCurrentQuality(QUALITY_LEVELS.PREVIEW)
       } else if (currentQuality === QUALITY_LEVELS.PREVIEW) {
-        // Load full quality after preview
         setCurrentQuality(QUALITY_LEVELS.FULL)
       } else {
-        // Final quality loaded
         setLoaded(true)
         onLoad?.()
       }

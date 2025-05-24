@@ -10,7 +10,7 @@ import { useUltraFastSearch } from "@/hooks/use-ultra-fast-search"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { LoadingSpinner } from "@/components/loading-spinner"
 
-// Dynamic imports
+// Dynamic imports for better performance
 const VirtualizedMasonryGrid = dynamic(
   () => import('@/components/virtualized-masonry-grid').then(mod => mod.VirtualizedMasonryGrid),
   { ssr: false }
@@ -117,13 +117,14 @@ const SearchStats = styled.div`
   }
 `
 
-// Performance monitoring hook
+// Performance monitoring
 function usePerformanceMetrics() {
   const [metrics, setMetrics] = useState({ lcp: 0, fid: 0, cls: 0 })
 
   useEffect(() => {
     if (typeof window === "undefined") return
 
+    // LCP Observer
     const lcpObserver = new PerformanceObserver((list) => {
       const entries = list.getEntries()
       const lastEntry = entries[entries.length - 1] as any
@@ -142,7 +143,7 @@ function usePerformanceMetrics() {
   return metrics
 }
 
-// API response cache
+// Cache for API responses with advanced strategies
 const createAdvancedCache = () => {
   const cache = new Map()
   const maxSize = 100
@@ -190,7 +191,7 @@ export default function HomePage() {
   const abortControllerRef = useRef<AbortController | null>(null)
   const performanceMetrics = usePerformanceMetrics()
 
-  // Search hook
+  // Ultra-fast search hook
   const {
     searchQuery,
     searchResults,
@@ -202,9 +203,9 @@ export default function HomePage() {
     isSearchActive,
   } = useUltraFastSearch(photos)
 
-  // Preload resources
+  // Preload critical resources
   useEffect(() => {
-    // Preload next page
+    // Preload next page of images
     const preloadNextPage = () => {
       if (!loading && hasMore) {
         const nextPage = page + 1
@@ -227,7 +228,7 @@ export default function HomePage() {
     return () => clearTimeout(timer)
   }, [loading, hasMore, page])
 
-  // Load curated photos with caching
+  // Load curated photos with aggressive caching
   const loadCuratedPhotos = useCallback(async (pageNum = 1, append = false) => {
     try {
       // Abort previous request
@@ -247,6 +248,7 @@ export default function HomePage() {
         apiCache.set(cacheKey, response)
       }
 
+      // Use startTransition for better performance
       startTransition(() => {
         if (append) {
           setPhotos((prev) => [...prev, ...response.photos])
@@ -254,7 +256,7 @@ export default function HomePage() {
           setPhotos(response.photos)
         }
 
-        setHasMore(response.page * response.per_page < response.total_results)
+        setHasMore(response.photos.length === 40)
         setPage(pageNum)
       })
     } catch (err) {
@@ -290,7 +292,7 @@ export default function HomePage() {
 
       startTransition(() => {
         setPhotos((prev) => [...prev, ...response.photos])
-        setHasMore(response.page * response.per_page < response.total_results)
+        setHasMore(response.photos.length === 40)
         setPage(nextPage)
       })
     } catch (err) {
@@ -306,7 +308,7 @@ export default function HomePage() {
   // Handle photo click with prefetching
   const handlePhotoClick = useCallback(
     (photo: PexelsPhoto) => {
-      // Prefetch adjacent photos
+      // Prefetch adjacent photos for faster navigation
       const currentIndex = photos.findIndex((p) => p.id === photo.id)
       const adjacentPhotos = photos.slice(Math.max(0, currentIndex - 2), currentIndex + 3)
 
@@ -399,4 +401,4 @@ export default function HomePage() {
       </Container>
     </ErrorBoundary>
   )
-}
+} 
