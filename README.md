@@ -2,8 +2,9 @@
 
 1. Clone the repository:
 
- git clone <repository-url>
- cd pexels-masonry-gallery
+  git clone <repository-url>
+ 
+  cd pexels-masonry-gallery
 
 
 2. Install dependencies:
